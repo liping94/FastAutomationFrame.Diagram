@@ -15,10 +15,14 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
+using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Xml.Serialization;
 
 namespace FastAutomationFrame.Diagram
 {
@@ -93,6 +97,12 @@ namespace FastAutomationFrame.Diagram
             set { _viewOriginPoint = value; }
         }
 
+        [Browsable(false)]
+        public ShapeCollection ShapeCollection => shapes;
+
+        [Browsable(false)]
+        public ConnectionCollection Connections => connections;
+
         #endregion
 
         #region Constructor
@@ -135,6 +145,112 @@ namespace FastAutomationFrame.Diagram
             }
         }
 
+        public void Save(string savePath)
+        {
+            SaveDataInfo data = this;
+            XmlSerializer xs = new XmlSerializer(data.GetType());
+            using (Stream stream = new FileStream(savePath, FileMode.Create, FileAccess.Write, FileShare.Read))
+            {
+                xs.Serialize(stream, data);
+            }
+            SignXmlHelper.SignXml(savePath);
+        }
+
+        public bool Import(string DGPath, out string msg, bool needShapeData = true, bool needControlData = false)
+        {
+            if (!SignXmlHelper.VerifyXml(DGPath))
+            {
+                msg = "文件已被更改！";
+                return false;
+            }
+
+            msg = "";
+            XmlSerializer xs = new XmlSerializer(typeof(SaveDataInfo));
+            using (Stream stream = new FileStream(DGPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                SaveDataInfo dataInfo = (xs.Deserialize(stream) as SaveDataInfo);
+                if (needShapeData)
+                {
+                    this.CopyShapes(dataInfo);
+                }
+
+                if (needControlData)
+                {
+                    this.CopyControlParams(dataInfo);
+                }
+            }
+            return true;
+        }
+
+        public void CopyControlParams(SaveDataInfo dataInfo)
+        {
+            this.ViewOriginPoint = dataInfo.ViewOriginPoint;
+            this.LineHoveredColor = dataInfo.LineHoveredColor;
+            this.LineSelectedColor = dataInfo.LineSelectedColor;
+            this.LineColor = dataInfo.LineColor;
+            this.BackColor = dataInfo.BackColor;
+            this.ShowGrid = dataInfo.ShowGrid;
+        }
+
+        public void CopyShapes(SaveDataInfo dataInfo)
+        {
+            dataInfo.Shapes.ForEach(shape =>
+            {
+                Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                Assembly selectAssemblie = assemblies.FirstOrDefault((Func<Assembly, bool>)(assemblie => assemblie.FullName == shape.AssemblyInfo));
+                Type shapeType = selectAssemblie.GetType(shape.Type);
+                Object[] constructParms = new object[] { };  //构造器参数
+                ShapeBase createShape = (ShapeBase)Activator.CreateInstance(shapeType, constructParms);
+                this.AddShape(createShape);
+                createShape.ObjectID = shape.ObjectID;
+                createShape.X = shape.X;
+                createShape.Y = shape.Y;
+                createShape.Text = shape.Text;
+                createShape.BackGroundColor = shape.BackGroundColor;
+                createShape.BoderColor = shape.BoderColor;
+                createShape.BoderSelectedColor = shape.BoderSelectedColor;
+                createShape.EnableBottomSourceConnector = shape.EnableBottomSourceConnector;
+                createShape.EnableLeftSourceConnector = shape.EnableLeftSourceConnector;
+                createShape.EnableRightSourceConnector = shape.EnableRightSourceConnector;
+                createShape.EnableTopSourceConnector = shape.EnableTopSourceConnector;
+                createShape.EnableBottomTargetConnector = shape.EnableBottomTargetConnector;
+                createShape.EnableLeftTargetConnector = shape.EnableLeftTargetConnector;
+                createShape.EnableRightTargetConnector = shape.EnableRightTargetConnector;
+                createShape.EnableTopTargetConnector = shape.EnableTopTargetConnector;
+                createShape.ShowBorder = shape.ShowBorder;
+            });
+
+            dataInfo.Connections.ForEach(connection =>
+            {
+                ShapeBase shapeFrom = null;
+                ShapeBase shapeTo = null;
+                foreach (ShapeBase shape in shapes)
+                {
+                    if (connection.FromContainEntityObjectID == shape.ObjectID)
+                    {
+                        shapeFrom = shape;
+                    }
+
+                    if (connection.ToContainEntityObjectID == shape.ObjectID)
+                    {
+                        shapeTo = shape;
+                    }
+
+                    if (shapeFrom != null && shapeTo != null)
+                    {
+                        break;
+                    }
+                }
+
+                if (shapeFrom == null || shapeTo == null)
+                {
+                    return;
+                }
+
+                this.AddConnection(shapeFrom.Connectors[connection.FromContainEntityIndex], shapeTo.Connectors[connection.ToContainEntityIndex]);
+            });
+        }
+
         protected override void OnDragEnter(DragEventArgs drgevent)
         {
             base.OnDragEnter(drgevent);
@@ -159,7 +275,6 @@ namespace FastAutomationFrame.Diagram
             _stratPoint = e.Location;
 
             int entityTYpe = -1;//0:ShapeBase;1:ShapeBase.connectors;2:connections;3:connections.From;4:connections.To.
-            int index = -1;
             Entity hoveredentity = shapes.Cast<ShapeBase>().FirstOrDefault(f =>
             {
                 if (f.Hit(e.Location))
@@ -178,6 +293,8 @@ namespace FastAutomationFrame.Diagram
                     point.Offset(-this.ViewOriginPoint.GetPoint().X, -this.ViewOriginPoint.GetPoint().Y);
 
                     Connection connection = this.AddConnection(connector.Point, point);
+                    connection.From.ContainEntity = connector.ContainEntity;
+                    connection.From.ConnectorsIndexOfContainEntity = connector.ConnectorsIndexOfContainEntity;
                     UpdateSelected(connection.To);
                     connector.AttachConnector(connection.From);
                     tracking = true;
@@ -251,15 +368,22 @@ namespace FastAutomationFrame.Diagram
                     Connector con;
                     for (int k = 0; k < shapes.Count; k++)
                     {
-                        if ((con = shapes[k].HitConnector(p, tracking)) != null)
+                        if ((con = shapes[k].HitConnector(p)) != null)
                         {
                             con.AttachConnector((selectedEntity as Connector));
+                            (selectedEntity as Connector).ContainEntity = con.ContainEntity;
+                            (selectedEntity as Connector).ConnectorsIndexOfContainEntity = con.ConnectorsIndexOfContainEntity;
                             con.hovered = false;
                             tracking = false;
                             return;
                         }
                     }
+
                   (selectedEntity as Connector).Release();
+                    this.DeleteElement((selectedEntity as Connector).ContainEntity);
+                }
+                else
+                {
 
                 }
                 tracking = false;
@@ -276,7 +400,7 @@ namespace FastAutomationFrame.Diagram
                 {
                     for (int k = 0; k < shapes.Count; k++)
                     {
-                        shapes[k].HitConnector(e.Location, tracking);
+                        shapes[k].HitConnector(e.Location);
                     }
                 }
             }
@@ -286,7 +410,7 @@ namespace FastAutomationFrame.Diagram
             }
 
             int entityTYpe = -1;//0:ShapeBase;1:ShapeBase.connectors;2:connections;3:connections.From;4:connections.To.
-            Entity hoveredentity = shapes.Cast<Entity>().FirstOrDefault(f=>f.Hit(e.Location));
+            Entity hoveredentity = shapes.Cast<Entity>().FirstOrDefault(f => f.Hit(e.Location));
             if (hoveredentity == null)
             {
                 hoveredentity = connections.Cast<Connection>().FirstOrDefault(f =>
@@ -306,7 +430,7 @@ namespace FastAutomationFrame.Diagram
                         entityTYpe = 4;
                         return true;
                     }
-                    return false; 
+                    return false;
                 });
             }
 
@@ -392,6 +516,10 @@ namespace FastAutomationFrame.Diagram
         public Connection AddConnection(Connector from, Connector to)
         {
             Connection con = this.AddConnection(from.Point, to.Point);
+            con.From.ContainEntity = from.ContainEntity;
+            con.From.ConnectorsIndexOfContainEntity = from.ConnectorsIndexOfContainEntity;
+            con.To.ContainEntity = to.ContainEntity;
+            con.To.ConnectorsIndexOfContainEntity = to.ConnectorsIndexOfContainEntity;
             con.Site = this;
             from.AttachConnector(con.From);
             to.AttachConnector(con.To);
@@ -639,5 +767,208 @@ namespace FastAutomationFrame.Diagram
         }
 
         #endregion
+    }
+
+    public class SaveDataInfo
+    {
+        public Point ViewOriginPoint { get; set; }
+
+        public int LineHoveredColorARGB
+        {
+            get
+            {
+                return LineHoveredColor.ToArgb();
+            }
+            set
+            {
+                LineHoveredColor = Color.FromArgb(value);
+            }
+        }
+
+        [XmlIgnore()]
+        public Color LineHoveredColor { get; set; } = Color.Blue;
+
+        public int LineSelectedColorARGB
+        {
+            get
+            {
+                return LineSelectedColor.ToArgb();
+            }
+            set
+            {
+                LineSelectedColor = Color.FromArgb(value);
+            }
+        }
+
+        [XmlIgnore()]
+        public Color LineSelectedColor { get; set; } = Color.Green;
+
+        public int LineColorARGB
+        {
+            get
+            {
+                return LineColor.ToArgb();
+            }
+            set
+            {
+                LineColor = Color.FromArgb(value);
+            }
+        }
+
+        [XmlIgnore()]
+        public Color LineColor { get; set; } = Color.Silver;
+
+        public int BackColorARGB
+        {
+            get
+            {
+                return BackColor.ToArgb();
+            }
+            set
+            {
+                BackColor = Color.FromArgb(value);
+            }
+        }
+
+        [XmlIgnore()]
+        public Color BackColor { get; set; } = SystemColors.Control;
+        public bool ShowGrid { get; set; } = false;
+        public List<SaveShape> Shapes { get; set; }
+
+        public List<SaveConnection> Connections { get; set; }
+
+        public static implicit operator SaveDataInfo(DiagramControl diagramControl)
+        {
+            SaveDataInfo saveDataInfo = new SaveDataInfo();
+            saveDataInfo.ViewOriginPoint = diagramControl.ViewOriginPoint.GetPoint();
+            saveDataInfo.LineHoveredColor = diagramControl.LineHoveredColor;
+            saveDataInfo.LineSelectedColor = diagramControl.LineSelectedColor;
+            saveDataInfo.LineColor = diagramControl.LineColor;
+            saveDataInfo.BackColor = diagramControl.BackColor;
+            saveDataInfo.ShowGrid = diagramControl.ShowGrid;
+            saveDataInfo.Shapes = new List<SaveShape>();
+            saveDataInfo.Connections = new List<SaveConnection>();
+            foreach (ShapeBase ShapeBase in diagramControl.ShapeCollection)
+            {
+                saveDataInfo.Shapes.Add(ShapeBase);
+            }
+
+            foreach (Connection connection in diagramControl.Connections)
+            {
+                saveDataInfo.Connections.Add(connection);
+            }
+
+            return saveDataInfo;
+        }
+    }
+
+    public class SaveConnection
+    {
+        public string ObjectID { get; set; }
+        public string FromObjectID { get; set; }
+        public string FromContainEntityObjectID { get; set; }
+        public int FromContainEntityIndex { get; set; } = -1;
+        public string ToObjectID { get; set; }
+        public string ToContainEntityObjectID { get; set; }
+        public int ToContainEntityIndex { get; set; } = -1;
+
+        public static implicit operator SaveConnection(Connection connection)
+        {
+            SaveConnection saveConnection = new SaveConnection();
+            saveConnection.ObjectID = connection.ObjectID;
+            saveConnection.FromObjectID = connection.From.ObjectID;
+            saveConnection.FromContainEntityObjectID = connection.From.ContainEntity.ObjectID;
+            saveConnection.FromContainEntityIndex = connection.From.ConnectorsIndexOfContainEntity;
+            saveConnection.ToObjectID = connection.To.ObjectID;
+            saveConnection.ToContainEntityObjectID = connection.To.ContainEntity.ObjectID;
+            saveConnection.ToContainEntityIndex = connection.To.ConnectorsIndexOfContainEntity;
+            return saveConnection;
+        }
+    }
+
+    public class SaveShape
+    {
+        public static implicit operator SaveShape(ShapeBase shape)
+        {
+            SaveShape saveShape = new SaveShape();
+            saveShape.AssemblyInfo = shape.GetType().Assembly.FullName;
+            saveShape.Type = shape.GetType().FullName;
+            saveShape.ObjectID = shape.ObjectID;
+            saveShape.X = shape.X;
+            saveShape.Y = shape.Y;
+            saveShape.Text = shape.Text;
+            saveShape.BackGroundColor = shape.BackGroundColor;
+            saveShape.BoderColor = shape.BoderColor;
+            saveShape.BoderSelectedColor = shape.BoderSelectedColor;
+            saveShape.EnableBottomSourceConnector = shape.EnableBottomSourceConnector;
+            saveShape.EnableLeftSourceConnector = shape.EnableLeftSourceConnector;
+            saveShape.EnableRightSourceConnector = shape.EnableRightSourceConnector;
+            saveShape.EnableTopSourceConnector = shape.EnableTopSourceConnector;
+            saveShape.EnableBottomTargetConnector = shape.EnableBottomTargetConnector;
+            saveShape.EnableLeftTargetConnector = shape.EnableLeftTargetConnector;
+            saveShape.EnableRightTargetConnector = shape.EnableRightTargetConnector;
+            saveShape.EnableTopTargetConnector = shape.EnableTopTargetConnector;
+            saveShape.ShowBorder = shape.ShowBorder;
+            return saveShape;
+        }
+        public string AssemblyInfo { get; set; }
+        public string Type { get; set; }
+        public string ObjectID { get; set; }
+        public int X { get; set; } = 0;
+        public int Y { get; set; } = 0;
+        public string Text { get; set; }
+
+        public int BackGroundColorARGB
+        {
+            get
+            {
+                return BackGroundColor.ToArgb();
+            }
+            set
+            {
+                BackGroundColor = Color.FromArgb(value);
+            }
+        }
+
+        [XmlIgnore()]
+        public Color BackGroundColor { get; set; } = Color.White;
+
+        public int BoderColorARGB
+        {
+            get
+            {
+                return BoderColor.ToArgb();
+            }
+            set
+            {
+                BoderColor = Color.FromArgb(value);
+            }
+        }
+        [XmlIgnore()]
+        public Color BoderColor { get; set; } = Color.Black;
+
+        public int BoderSelectedColorARGB
+        {
+            get
+            {
+                return BoderSelectedColor.ToArgb();
+            }
+            set
+            {
+                BoderSelectedColor = Color.FromArgb(value);
+            }
+        }
+
+        [XmlIgnore()]
+        public Color BoderSelectedColor { get; set; } = Color.GreenYellow;
+        public bool EnableBottomSourceConnector { get; set; } = true;
+        public bool EnableLeftSourceConnector { get; set; } = true;
+        public bool EnableRightSourceConnector { get; set; } = true;
+        public bool EnableTopSourceConnector { get; set; } = true;
+        public bool EnableBottomTargetConnector { get; set; } = true;
+        public bool EnableLeftTargetConnector { get; set; } = true;
+        public bool EnableRightTargetConnector { get; set; } = true;
+        public bool EnableTopTargetConnector { get; set; } = true;
+        public bool ShowBorder { get; set; } = true;
     }
 }

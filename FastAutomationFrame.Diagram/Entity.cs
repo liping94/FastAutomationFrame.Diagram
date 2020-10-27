@@ -17,6 +17,7 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Serialization;
 
 namespace FastAutomationFrame.Diagram
 {
@@ -50,6 +51,9 @@ namespace FastAutomationFrame.Diagram
 
 		#region Properties
 
+		[Browsable(false)]
+		public string ObjectID { get; set; } = Guid.NewGuid().ToString();
+
 		/// <summary>
 		/// Gets or sets whether the entity is selected
 		/// </summary>
@@ -63,14 +67,15 @@ namespace FastAutomationFrame.Diagram
 		/// Gets or sets the site of the entity
 		/// </summary>
 		[Browsable(false)]
+		[XmlIgnore]
 		public DiagramControl Site
 		{
-			get 
-			{ 
-				return site; 
+			get
+			{
+				return site;
 			}
 			set
-			{ 
+			{
 				site = value;
 				SiteChanged();
 			}

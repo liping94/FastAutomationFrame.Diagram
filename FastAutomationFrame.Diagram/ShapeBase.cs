@@ -178,7 +178,7 @@ namespace FastAutomationFrame.Diagram
 			get { return rectangle.X; }
 			set
 			{
-				Point p = new Point(value - rectangle.X, rectangle.Y);
+				Point p = new Point(value - rectangle.X, 0);
 				this.Move(p);
 
 				if (Site != null)
@@ -195,7 +195,7 @@ namespace FastAutomationFrame.Diagram
 			get { return rectangle.Y; }
 			set
 			{
-				Point p = new Point(rectangle.X, value - rectangle.Y);
+				Point p = new Point(0, value - rectangle.Y);
 				this.Move(p);
 
 				if (Site != null)
@@ -286,28 +286,44 @@ namespace FastAutomationFrame.Diagram
 		{
 			connectors.Remove(cBottom);
 			cBottom = new Connector(new Point((int)(rectangle.Left + rectangle.Width / 2), rectangle.Bottom));
+			cBottom.ContainEntity = this;
+			cBottom.ConnectorsIndexOfContainEntity = connectors.Count;
 			cBottom.Site = this.site;
+			cBottom.OwnerID = this.ObjectID;
+			cBottom.Index = connectors.Count;
 			cBottom.Name = "Bottom connector";
 			cBottom.ConnectorDirection = ConnectorDirection.Down;
 			connectors.Add(cBottom);
 
 			connectors.Remove(cLeft);
 			cLeft = new Connector(new Point(rectangle.Left, (int)(rectangle.Top + rectangle.Height / 2)));
+			cLeft.ContainEntity = this;
+			cLeft.ConnectorsIndexOfContainEntity = connectors.Count;
 			cLeft.Site = this.site;
+			cLeft.OwnerID = this.ObjectID;
+			cLeft.Index = connectors.Count;
 			cLeft.Name = "Left connector";
 			cLeft.ConnectorDirection = ConnectorDirection.Left;
 			connectors.Add(cLeft);
 
 			connectors.Remove(cRight);
 			cRight = new Connector(new Point(rectangle.Right, (int)(rectangle.Top + rectangle.Height / 2)));
+			cRight.ContainEntity = this;
+			cRight.ConnectorsIndexOfContainEntity = connectors.Count;
 			cRight.Site = this.site;
+			cRight.OwnerID = this.ObjectID;
+			cRight.Index = connectors.Count;
 			cRight.Name = "Right connector";
 			cRight.ConnectorDirection = ConnectorDirection.Right;
 			connectors.Add(cRight);
 
 			connectors.Remove(cTop);
 			cTop = new Connector(new Point((int)(rectangle.Left + rectangle.Width / 2), rectangle.Top));
+			cTop.ContainEntity = this;
+			cTop.ConnectorsIndexOfContainEntity = connectors.Count;
 			cTop.Site = this.site;
+			cTop.OwnerID = this.ObjectID;
+			cTop.Index = connectors.Count;
 			cTop.Name = "Top connector";
 			cTop.ConnectorDirection = ConnectorDirection.Up;
 			connectors.Add(cTop);
@@ -639,8 +655,6 @@ namespace FastAutomationFrame.Diagram
 			r.Inflate(20, 20);
 			site.Invalidate(r);
 		}
-
-
 
 		/// <summary>
 		/// Moves the shape with the given shift

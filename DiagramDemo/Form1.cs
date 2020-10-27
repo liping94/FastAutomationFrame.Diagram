@@ -113,5 +113,33 @@ namespace DiagramDemo
 
             #endregion
         }
+
+        private void toolStripButton2_Click(object sender, EventArgs e)
+        {
+            SaveFileDialog sfd = new SaveFileDialog();
+            sfd.Filter = "流程文件（*.dg）|*.dg";
+            sfd.FilterIndex = 1;
+            sfd.RestoreDirectory = true;
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                this.diagramControl1.Save(sfd.FileName);
+            }
+        }
+
+        private void toolStripButton3_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "流程文件（*.dg）|*.dg";
+            openFileDialog.FilterIndex = 1;
+            openFileDialog.RestoreDirectory = true;
+            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                string msg;
+                if (this.diagramControl1.Import(openFileDialog.FileName, out msg))
+                {
+                    MessageBox.Show(msg);
+                }
+            }
+        }
     }
 }

@@ -34,15 +34,17 @@ namespace FastAutomationFrame.Diagram
 		[Browsable(true), Description("始节点"), Category("Layout")]
 		public Connector From
 		{
-			get 
-			{ 
+			get
+			{
 				return from;
 			}
-			set
-			{ 
+			private set
+			{
 				from = value;
 				if (site != null)
 					from.Site = site;
+
+				from.ContainEntity = this;
 			}
 		}
 
@@ -54,11 +56,13 @@ namespace FastAutomationFrame.Diagram
 			{
 				return to;
 			}
-			set
+			private set
 			{
 				to = value;
 				if (site != null)
 					to.Site = site;
+
+				to.ContainEntity = this;
 			}
 		}
 
@@ -80,12 +84,12 @@ namespace FastAutomationFrame.Diagram
 		[Browsable(true), Description("默认颜色"), Category("Layout")]
 		public Color Color
 		{
-			get 
-			{ 
+			get
+			{
 				return color;
 			}
-			set 
-			{ 
+			set
+			{
 				color = value;
 				_useBackColor = true;
 			}
@@ -96,10 +100,10 @@ namespace FastAutomationFrame.Diagram
 		public Color LineSelectedColor
 		{
 			get
-			{ 
+			{
 				return lineSelectedColor;
 			}
-			set 
+			set
 			{
 				lineSelectedColor = value;
 				_useBackColor = true;
@@ -110,12 +114,12 @@ namespace FastAutomationFrame.Diagram
 		[Browsable(true), Description("悬停颜色"), Category("Layout")]
 		public Color LineHoveredColor
 		{
-			get 
-			{ 
+			get
+			{
 				return lineHoveredColor;
 			}
-			set 
-			{ 
+			set
+			{
 				lineHoveredColor = value;
 				_useBackColor = true;
 			}
@@ -147,28 +151,30 @@ namespace FastAutomationFrame.Diagram
 
 			this.from = new Connector(from.Copy());
 			this.from.Name = "From";
-            this.from.LocationChanged += Connector_LocationChanged;
+			this.from.ContainEntity = this;
+			this.from.LocationChanged += Connector_LocationChanged;
 			connector1 = this.from;
 			Connectors.Add(connector1);
 
 			this.to = new Connector(to.Copy());
 			this.To.Name = "To";
+			this.to.ContainEntity = this;
 			connector2 = this.to;
 			this.to.LocationChanged += Connector_LocationChanged;
 			this.To.AttachedToChanged += To_AttachedToChanged;
 			Connectors.Add(connector2);
 		}
 
-        private void Connector_LocationChanged(object sender, LocationEventArgs e)
+		private void Connector_LocationChanged(object sender, LocationEventArgs e)
 		{
 			InitialPath();
 		}
 
-        private void To_AttachedToChanged(object sender, AttachedToChangedEventArgs e)
+		private void To_AttachedToChanged(object sender, AttachedToChangedEventArgs e)
 		{
 			InitialPath();
 		}
-        private void InitialPath()
+		private void InitialPath()
 		{
 			Connector connector1 = this.from, connector2 = this.to;
 			int x = 0, y = 0;
@@ -188,7 +194,7 @@ namespace FastAutomationFrame.Diagram
 					x = connector2.Point.X;
 					connectors.Add(new Connector(new DiagramPoint(x, y)));
 				}
-				else if(connector1.Point.Y >= connector2.Point.Y)
+				else if (connector1.Point.Y >= connector2.Point.Y)
 				{
 					x = connector1.Point.X;
 					y = connector1.Point.Y + 10;
@@ -617,7 +623,7 @@ namespace FastAutomationFrame.Diagram
 					x = connector2.Point.X;
 					connectors.Add(new Connector(new DiagramPoint(x, y)));
 				}
-				else if(connector1.Point.Y > connector2.Point.Y)
+				else if (connector1.Point.Y > connector2.Point.Y)
 				{
 					x = connector1.Point.X - 10;
 					y = connector1.Point.Y;
@@ -675,7 +681,7 @@ namespace FastAutomationFrame.Diagram
 					y = connector1.Point.Y;
 					connectors.Add(new Connector(new DiagramPoint(x, y)));
 				}
-				else if(connector1.Point.X != connector2.Point.X)
+				else if (connector1.Point.X != connector2.Point.X)
 				{
 					x = connector1.Point.X - 10;
 					y = connector1.Point.Y;
